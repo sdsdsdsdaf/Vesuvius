@@ -1,0 +1,15 @@
+# Python cache
+__pycache__/
+**/__pycache__/
+
+# Large / generated data files
+*.gif
+*.h5
+*.tif
+
+# Optional: numpy / torch cache (추천)
+*.npy
+*.npz
+*.pt
+*.pth
+*.ckpt
