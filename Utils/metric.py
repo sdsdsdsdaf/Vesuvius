@@ -8,16 +8,11 @@ import numpy as np
 import torch
 import cc3d
 
+try:
+    from Utils.Typing import MetricsResult
+except:
+    from Typing import MetricsResult
     
-class MetricsResult(TypedDict):
-    dice_fg1: float
-    precision_fg1: float
-    recall_fg1: float
-    f1_fg1: float
-    leaderboard_score: Optional[LeaderboardReport]
-    split_stats: Optional[dict]
-    merge_stats: Optional[dict]
-    split_merge_proxy: Optional[float]    
 
 @torch.no_grad()
 def fast_split_merge_proxy(

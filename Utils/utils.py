@@ -2,6 +2,7 @@ import gc
 import os
 import re
 import glob
+from typing import Any
 import h5py
 import pandas as pd
 import tifffile as tiff
@@ -9,6 +10,7 @@ from tqdm.auto import tqdm
 import random
 import numpy as np
 import torch
+
 
 
 def _extract_numeric_id_from_filename(path: str) -> str:
@@ -146,3 +148,59 @@ def cleanup_memory():
     gc.collect()
     torch.cuda.empty_cache()
     torch.cuda.ipc_collect()
+    
+def detect_nan_inf(
+    loss: torch.Tensor,
+    model: torch.nn.Module,
+    logs: dict[str, Any] | None = None,
+    check_grad: bool = True,
+    verbose: bool = True,
+) -> bool:
+    """
+    Returns True if NaN or Inf is detected in loss or gradients.
+    Returns False if everything is finite.
+
+    Assumes forward + backward has already been called.
+    """
+
+    has_issue = False
+
+    # ---------- 1) Check loss ----------
+    if not torch.isfinite(loss):
+        has_issue = True
+        if verbose:
+            print("[NaN/Inf DETECTED] loss =", loss.item())
+
+    # ---------- 2) Check logs ----------
+    if logs is not None:
+        for k, v in logs.items():
+            if isinstance(v, (float, int)):
+                if not torch.isfinite(torch.tensor(v)):
+                    has_issue = True
+                    if verbose:
+                        print(f"[NaN/Inf DETECTED] log[{k}] =", v)
+
+    # ---------- 3) Check gradients ----------
+    if check_grad:
+        for name, param in model.named_parameters():
+            if param.grad is None:
+                continue
+
+            grad = param.grad
+
+            if not torch.isfinite(grad).all():
+                has_issue = True
+
+                if verbose:
+                    nan_cnt = torch.isnan(grad).sum().item()
+                    inf_cnt = torch.isinf(grad).sum().item()
+
+                    print(f"[NaN/Inf DETECTED] grad in '{name}'")
+                    print(f"  shape={tuple(grad.shape)}")
+                    print(f"  nan={nan_cnt}, inf={inf_cnt}")
+                    print(f"  min={grad.min().item()}, max={grad.max().item()}")
+
+                # 보통 하나만 터져도 충분
+                break
+
+    return has_issue

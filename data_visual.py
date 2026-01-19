@@ -18,6 +18,7 @@ from pprint import pprint
 import time
 
 from Utils.metric import metric
+from Utils.model import TTAPredictor
 
 data_path = kagglehub.competition_download('vesuvius-challenge-surface-detection')
 test_data_dir = os.path.join(data_path, "test_images")
@@ -75,6 +76,7 @@ model = UNet(
         num_res_units=2,
     ).to(device)
 
+pred_model = TTAPredictor(model, device=device)
 ckpt = torch.load("weights/unet_vesuvius.pth", map_location=device)
 
 # ckpt가 state_dict 자체거나, {"state_dict": ...} 형태일 수 있어서 둘 다 처리

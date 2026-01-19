@@ -12,20 +12,22 @@ from torch.utils.data import DataLoader
 import torch.optim as optim
 from tqdm.auto import tqdm
 
-from Utils.utils import cleanup_memory
-
-
 
 try:
     from Utils.Dataset import VesuviusH5PatchDataset3D
     from Utils.Sampler import get_batch_sampler
-    from Utils.utils import build_h5_group_from_train_images
+    from Utils.utils import build_h5_group_from_train_images, detect_nan_inf
     from Utils.Loss import MaskedDiceBCETwitterignore2
+    from Utils.utils import cleanup_memory
+    from Utils.transform import get_train_transform, get_val_transform
+    
 except:
     from Dataset import VesuviusH5PatchDataset3D
     from Sampler import get_batch_sampler
-    from utils import build_h5_group_from_train_images
+    from utils import build_h5_group_from_train_images, detect_nan_inf
     from Loss import MaskedDiceBCETwitterignore2
+    from utils import cleanup_memory
+    from transform import get_val_transform, get_train_transform
 
     
     
@@ -51,6 +53,7 @@ def train_one_epoch(
     epoch: int,
     scaler: torch.GradScaler = None,
     use_wnb: bool = False,
+    grad_clip: float = float('inf')
 ):
     model.train()
     total_loss = defaultdict(float)
@@ -73,10 +76,13 @@ def train_one_epoch(
             loss, log = loss_fn(outputs, targets)
 
         scaler.scale(loss).backward()
-
+        if detect_nan_inf(loss=loss, model=model, logs=log):
+            print(f" [Epoch {epoch}] Batch [{idx}] Dectect Nan Or Inf --> Skipping Batch")
+            continue
+        
         # (선택) gradient clipping
-        # scaler.unscale_(optimizer)
-        # torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+        scaler.unscale_(optimizer)
+        torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip)
 
         scaler.step(optimizer)
         scaler.update()
@@ -163,7 +169,7 @@ if __name__ == "__main__":
         strides=(2, 2, 2, 2),
         num_res_units=2,
     ).to(torch.device("cuda" if torch.cuda.is_available() else "cpu"))
-    model:torch.Module = torch.compile(model)
+    model:nn.Module = torch.compile(model)
     
     optimizer = optim.AdamW(model.parameters(), lr=1e-4)
     loss_fn = MaskedDiceBCETwitterignore2(tear="tv")
@@ -177,7 +183,10 @@ if __name__ == "__main__":
     test_data_dir = os.path.join(data_path, "test_images")
     train_data_dir = os.path.join(data_path, "train_images")
     train_lable_dir = os.path.join(data_path, "train_labels")
-        
+    
+    train_trasform = get_train_transform()
+    val_transform = get_val_transform()
+    
     build_h5_group_from_train_images(
         train_images_dir=train_data_dir,
         train_labels_dir=train_lable_dir,
@@ -189,6 +198,7 @@ if __name__ == "__main__":
     dataset = VesuviusH5PatchDataset3D(
         h5_path="vesuvius_train_zyx_zyx.h5",
         meta_return=True,
+        transform=train_trasform
     )
     
     print(f"Dataset size: {len(dataset)} patches")
@@ -216,7 +226,7 @@ if __name__ == "__main__":
     
     print("DataLoader initialized with batch size 12.")
     
-    print("=============== Starting training for 2 epochs... ===============")
+    print("=============== Starting training for 10 epochs... ===============")
     train(
         model=model,
         train_loader=dataloader,
@@ -224,7 +234,7 @@ if __name__ == "__main__":
         optimizer=optimizer,
         loss_fn=loss_fn,
         device=torch.device("cuda" if torch.cuda.is_available() else "cpu"),
-        num_epochs=2,
+        num_epochs=10,
         scaler=torch.GradScaler(),
         use_wnb=True,
     )

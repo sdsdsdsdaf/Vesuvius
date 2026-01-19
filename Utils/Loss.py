@@ -3,6 +3,11 @@ import torch.nn as nn
 import torch.nn.functional as F
 from monai.losses import HausdorffDTLoss
 
+try:
+    from Utils.Typing import LossLogOutput
+except:
+    from Typing import LossLogOutput 
+
 def _ensure_b1dhw(x: torch.Tensor) -> torch.Tensor:
     if x.dim() == 4:
         return x.unsqueeze(1)
@@ -18,7 +23,7 @@ def tv_loss_3d(prob: torch.Tensor, valid: torch.Tensor | None = None) -> torch.T
     dx = (prob[:, :, :, :, 1:] - prob[:, :, :, :, :-1]).abs().mean()
     return dz + dy + dx
 
-class MaskedDiceBCETwitterignore2(nn.Module):
+class MaskedDiceBCETwitterignore2(nn.Module) :
     """
     0=bg, 1=fg, 2=ignore
     logits: (B,1,D,H,W) or (B,D,H,W)
@@ -53,9 +58,10 @@ class MaskedDiceBCETwitterignore2(nn.Module):
         self.apply_tear_every = int(apply_tear_every)
         self._step = 0
 
-        self.hd = HausdorffDTLoss(sigmoid=False, reduction="mean")
+        self.hd = HausdorffDTLoss(sigmoid=True, reduction="mean")
         self.bd = None
-    def forward(self, logits: torch.Tensor, gt: torch.Tensor):
+        
+    def forward(self, logits: torch.Tensor, gt: torch.Tensor) -> tuple[torch.Tensor, LossLogOutput]:
         self._step += 1
 
         logits = _ensure_b1dhw(logits)
@@ -67,7 +73,8 @@ class MaskedDiceBCETwitterignore2(nn.Module):
         prob = torch.sigmoid(logits)
 
         # ---- Masked BCE ----
-        bce = F.binary_cross_entropy_with_logits(logits[valid], y[valid], reduction="mean")
+        n = valid.sum().clamp_min(1)
+        bce = F.binary_cross_entropy_with_logits(logits[valid], y[valid], reduction="sum") / n
 
         # ---- Masked Soft Dice (fg only) ----
         p = prob[valid]
@@ -84,11 +91,11 @@ class MaskedDiceBCETwitterignore2(nn.Module):
 
         if do_tear:
             valid_f = valid.float()
-            prob_m = prob * valid_f
+            logits_m = logits * valid_f
             y_m = y * valid_f
 
             if self.tear == "hausdorff":
-                tear_loss = self.hd(prob_m, y_m)
+                tear_loss = self.hd(logits_m, y_m)
             elif self.tear == "boundary":
                 raise NotImplementedError("Boundary loss not implemented yet.")
             elif self.tear == "tv":
@@ -99,12 +106,12 @@ class MaskedDiceBCETwitterignore2(nn.Module):
         total = base + self.lambda_tear * tear_loss
         
         logs = {
-            "loss/base": float(base.detach().item()),
-            "loss/dice": float(dice.detach().item()),
-            "loss/bce": float(bce.detach().item()),
-            "loss/tear": float(tear_loss.detach().item()) if do_tear else 0.0,
-            "loss/total": float(total.detach().item()),
-            "loss/tear_enabled": int(do_tear),
+            "loss_base": float(base.detach().item()),
+            "loss_dice": float(dice.detach().item()),
+            "loss_bce": float(bce.detach().item()),
+            "loss_tear": float(tear_loss.detach().item()) if do_tear else 0.0,
+            "loss_total": float(total.detach().item()),
+            "loss_tear_enabled": int(do_tear),
         }
         return total, logs
 
