@@ -1,9 +1,11 @@
+import os
 import random
 from collections import defaultdict
 import numpy as np
 from torch.utils.data import Sampler
 from tqdm.auto import tqdm
 import torch
+import pickle as pkl
 
 try:
     from Utils.Dataset import VesuviusH5PatchDataset3D
@@ -11,7 +13,7 @@ except:
     from Dataset import VesuviusH5PatchDataset3D
 
 @torch.no_grad()
-def build_index_cache(ds, pos_thr=1, max_items=None):
+def build_index_cache(file_path, ds, pos_thr=1, max_items=None):
     """
     Build per-index cache for:
       - scroll_ids[idx]
@@ -20,6 +22,12 @@ def build_index_cache(ds, pos_thr=1, max_items=None):
     sids = [None] * len(ds)
     scroll_ids = [None] * len(ds)
     is_pos = np.zeros(len(ds), dtype=np.bool_)
+    
+    if os.path.exists(file_path):
+        with open(file_path, 'rb') as f:
+            scroll_ids, is_pos = pkl.load(f)
+        
+        return scroll_ids, is_pos
 
     # Ensure ds returns meta and does NOT apply random augmentation for this pass.
     # Best: ds.meta_return=True, ds.augment=False (or mode="cache")
@@ -42,10 +50,13 @@ def build_index_cache(ds, pos_thr=1, max_items=None):
     if max_items is not None and n < len(ds):
         scroll_ids = scroll_ids[:n]
         is_pos = is_pos[:n]
-
+    
+    with open(file_path, 'wb') as f:
+        pkl.dump((scroll_ids, is_pos), f)
+    
     return scroll_ids, is_pos
 
-def get_batch_sampler(batch_size: int, pos_fraction: float = 0.5, pos_thr: int = 1,
+def get_batch_sampler(file_path:str, batch_size: int, pos_fraction: float = 0.5, pos_thr: int = 1,
                       shuffle: bool = True, drop_last: bool = True, max_items=None, seed: int = 42, **kwargs):
     """
     Create a MultiScrollBalancedBatchSampler for the given dataset.
@@ -69,7 +80,7 @@ def get_batch_sampler(batch_size: int, pos_fraction: float = 0.5, pos_thr: int =
     """
     dataset = VesuviusH5PatchDataset3D(**kwargs)
     dataset.meta_return = True  # ensure meta is returned
-    scroll_ids, is_pos = build_index_cache(dataset, max_items=max_items, pos_thr=pos_thr)
+    scroll_ids, is_pos = build_index_cache(file_path, dataset, max_items=max_items, pos_thr=pos_thr)
     
     sampler = MultiScrollBalancedBatchSampler(
         dataset=dataset,

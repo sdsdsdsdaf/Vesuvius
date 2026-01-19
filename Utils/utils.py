@@ -11,7 +11,26 @@ import random
 import numpy as np
 import torch
 
-
+def to5dim(tensor:torch.Tensor):
+    
+    """
+    3D Tensor (D, H, W) -> (1, 1, D, W, h)
+    
+    4D Tensor (B, D, H, W) -> (B, 1, D, W, H)
+    """
+    
+    out = tensor
+    
+    if tensor.ndim == 3:
+        out = tensor.unsqueeze(0).unsqueeze(0)
+    elif tensor.ndim == 4:
+        out = tensor.unsqueeze(1)
+    elif tensor.ndim == 5:
+        pass
+    else:
+        raise ValueError("Input Dim is in [3, 4, 5]")
+        
+    return out
 
 def _extract_numeric_id_from_filename(path: str) -> str:
     """

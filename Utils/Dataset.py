@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 import random
 from typing import Dict, Optional, Tuple, List
 
@@ -7,6 +8,7 @@ import numpy as np
 import torch
 from torch.utils.data import Dataset
 from tqdm.auto import tqdm
+import pickle as pkl
 
 try:
     from Utils.utils import build_h5_group_from_train_images
@@ -104,6 +106,8 @@ class VesuviusH5PatchDataset3D(Dataset):
         if self.mode == "preload":
             self._preload_all()
             
+        print("\nDataSet Load Complete !")
+            
             
     def _get_h5(self) -> h5py.File:
         if self._h5 is None:
@@ -111,24 +115,36 @@ class VesuviusH5PatchDataset3D(Dataset):
         return self._h5
     
     def _scan_samples(self) -> Tuple[List[str], Dict[str, Tuple[int, int, int]]]:
+
         h5 = self._get_h5()
         root = h5[self.group_root]
         sample_ids = sorted(root.keys())
         sample_shapes = {}
-        for sid in sample_ids:
+        for sid in tqdm(sample_ids, desc="Sacnning samples", leave=False):
             g = root[sid]
             img_ds = g[self.image_name]
             sample_shapes[sid] = tuple(map(int, img_ds.shape))  # (Z,H,W)
+
+        
         return sample_ids, sample_shapes
     
     def _build_patch_index(self):
         out: List[Tuple[str, int, int, int]] = []
+        
+        file_path = Path(self.h5_path).stem
+        file_name = str(file_path) + "_patch_index.pkl"
 
+        if os.path.exists(file_name):
+            with open(file_name, 'rb') as f:
+                out = pkl.load(f)
+                
+            return out
+        
         # Open once for indexing
         with h5py.File(self.h5_path, "r") as f:
             root = f[self.group_root]
 
-            for sid in self.sample_ids:
+            for sid in tqdm(self.sample_ids, desc="Creating Patch index", leave=False):
                 Z, H, W = self.sample_shapes[sid]
                 zs = _starts(Z, self.dz, self.sz)
                 ys = _starts(H, self.dy, self.sy)
@@ -153,6 +169,9 @@ class VesuviusH5PatchDataset3D(Dataset):
 
                             out.append((sid, z0, y0, x0))
 
+        with open(file_name, 'wb') as f:
+            pkl.dump(out, f)
+        
         return out
 
     

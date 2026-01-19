@@ -73,7 +73,7 @@ class MaskedDiceBCETwitterignore2(nn.Module) :
         prob = torch.sigmoid(logits)
 
         # ---- Masked BCE ----
-        n = valid.sum().clamp_min(1)
+        n = valid.sum().clamp_min(8)
         bce = F.binary_cross_entropy_with_logits(logits[valid], y[valid], reduction="sum") / n
 
         # ---- Masked Soft Dice (fg only) ----

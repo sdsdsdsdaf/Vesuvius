@@ -11,9 +11,9 @@ from monai.transforms import (
 )
 
 
-def get_train_transform():
+def get_train_transform(filp_prob=0.5, rotate_prob=0.4, shift_intensity_prob=0.5):
     return Compose([
-        EnsureChannelFirstd(keys=["image", "label"]),
+        EnsureChannelFirstd(keys=["image", "label"], channel_dim="no_channel"),
 
         ScaleIntensityRanged(
             keys=["image"],
@@ -24,27 +24,28 @@ def get_train_transform():
             clip=True,
         ),
 
-        RandFlipd(keys=["image", "label"], spatial_axis=0, prob=0.5),
-        RandFlipd(keys=["image", "label"], spatial_axis=1, prob=0.5),
-        RandFlipd(keys=["image", "label"], spatial_axis=2, prob=0.5),
+        RandFlipd(keys=["image", "label"], spatial_axis=0, prob=filp_prob),
+        RandFlipd(keys=["image", "label"], spatial_axis=1, prob=filp_prob),
+        RandFlipd(keys=["image", "label"], spatial_axis=2, prob=filp_prob),
 
         RandRotate90d(
             keys=["image", "label"],
-            prob=0.4,
+            prob=rotate_prob,
             max_k=3,
-            spatial_axes=(0, 1),
+            spatial_axes=(1, 2),
         ),
 
-        RandShiftIntensityd(keys=["image"], offsets=0.10, prob=0.5),
+        RandShiftIntensityd(keys=["image"], offsets=0.10, prob=shift_intensity_prob),
 
-        EnsureTyped(keys=["image"], dtype=torch.float32),
-        EnsureTyped(keys=["label"], dtype=torch.long),
         Lambdad(keys=["label"], func=lambda x: x.clamp(0, 2)),
+        EnsureTyped(keys=["image"], dtype=torch.float32, track_meta=False),
+        EnsureTyped(keys=["label"], dtype=torch.long, track_meta=False),
+        
     ])
 
 def get_val_transform() -> Compose:
     return Compose([
-        EnsureChannelFirstd(keys=["image", "label"]),
+        EnsureChannelFirstd(keys=["image", "label"], channel_dim="no_channel"),
 
         ScaleIntensityRanged(
             keys=["image"],
@@ -53,7 +54,8 @@ def get_val_transform() -> Compose:
             clip=True,
         ),
 
-        EnsureTyped(keys=["image"], dtype=torch.float32),
-        EnsureTyped(keys=["label"], dtype=torch.float32),
         Lambdad(keys=["label"], func=lambda x: x.clamp(0, 2)),
+        EnsureTyped(keys=["image"], dtype=torch.float32, track_meta=False),
+        EnsureTyped(keys=["label"], dtype=torch.long, track_meta=False),
+        
     ])

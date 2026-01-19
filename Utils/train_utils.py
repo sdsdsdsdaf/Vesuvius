@@ -18,7 +18,7 @@ try:
     from Utils.Sampler import get_batch_sampler
     from Utils.utils import build_h5_group_from_train_images, detect_nan_inf
     from Utils.Loss import MaskedDiceBCETwitterignore2
-    from Utils.utils import cleanup_memory
+    from Utils.utils import cleanup_memory, seed_everything, to5dim
     from Utils.transform import get_train_transform, get_val_transform
     
 except:
@@ -26,7 +26,7 @@ except:
     from Sampler import get_batch_sampler
     from utils import build_h5_group_from_train_images, detect_nan_inf
     from Loss import MaskedDiceBCETwitterignore2
-    from utils import cleanup_memory
+    from utils import cleanup_memory, seed_everything, to5dim
     from transform import get_val_transform, get_train_transform
 
     
@@ -63,9 +63,10 @@ def train_one_epoch(
         
         inputs, targets, meta = batch
         inputs = inputs.to(device)
-        inputs = inputs.unsqueeze(1)  # (B,1,D,H,W)
+        inputs = to5dim(inputs)  # (B,1,D,H,W)
         targets = targets.to(device)
-        targets = targets.unsqueeze(1)  # (B,1,D,H,W)
+        targets = to5dim(inputs)  # (B,1,D,H,W)
+        
         
         optimizer.zero_grad()
         
@@ -159,6 +160,7 @@ if __name__ == "__main__":
     wandb.define_metric("train_epoch/*", step_metric="epoch")
     wandb.define_metric("val/*", step_metric="epoch")
 
+    seed_everything()
     
     # simple test
     model = UNet(
@@ -206,6 +208,7 @@ if __name__ == "__main__":
     print(f"Patch shape: x={x_patch.shape}, y={y_patch.shape} meta={meta}")
     
     sampler = get_batch_sampler(
+        file_path="vesuvius_train_zyx_zyx_sampler_cache.pkl",
         batch_size=8,
         pos_fraction=0.5,
         pos_thr=1,
