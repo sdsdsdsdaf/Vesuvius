@@ -49,6 +49,23 @@ def get_batch_sampler(batch_size: int, pos_fraction: float = 0.5, pos_thr: int =
                       shuffle: bool = True, drop_last: bool = True, max_items=None, seed: int = 42, **kwargs):
     """
     Create a MultiScrollBalancedBatchSampler for the given dataset.
+    
+    Example usage:
+        ```python
+        sampler = get_batch_sampler(
+            batch_size=8,
+            pos_fraction=0.5,
+            pos_thr=1,
+            shuffle=True,
+            drop_last=True,
+            seed=42,
+            h5_path="data/train.h5",
+            patch_size=(160,160,160),
+            stride=(80,80,80),
+            mode="lazy",
+        )
+        ```
+    
     """
     dataset = VesuviusH5PatchDataset3D(**kwargs)
     dataset.meta_return = True  # ensure meta is returned

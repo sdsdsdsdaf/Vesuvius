@@ -22,7 +22,8 @@ class MaskedDiceBCETwitterignore2(nn.Module):
     """
     0=bg, 1=fg, 2=ignore
     logits: (B,1,D,H,W) or (B,D,H,W)
-    gt:     same spatial, int {0,1,2}
+    gt:     (B,1,D,H,W) same spatial, int {0,1,2}
+    
     """
 
     def __init__(
@@ -34,6 +35,15 @@ class MaskedDiceBCETwitterignore2(nn.Module):
         eps: float = 1e-6,
         apply_tear_every: int = 1,
     ):
+        
+        """
+        Example usage:
+        ```python
+        loss_fn = MaskedDiceBCETwitterignore2(tear="tv", lambda_tear=0.1, dice_weight=1.0, bce_weight=1.0)
+        loss, logs = loss_fn(logits, gt)
+        ```
+        """
+        
         super().__init__()
         self.tear = tear.lower()
         self.lambda_tear = float(lambda_tear)
@@ -45,7 +55,6 @@ class MaskedDiceBCETwitterignore2(nn.Module):
 
         self.hd = HausdorffDTLoss(sigmoid=False, reduction="mean")
         self.bd = None
-
     def forward(self, logits: torch.Tensor, gt: torch.Tensor):
         self._step += 1
 
@@ -58,7 +67,7 @@ class MaskedDiceBCETwitterignore2(nn.Module):
         prob = torch.sigmoid(logits)
 
         # ---- Masked BCE ----
-        bce = F.binary_cross_entropy(prob[valid], y[valid], reduction="mean")
+        bce = F.binary_cross_entropy_with_logits(logits[valid], y[valid], reduction="mean")
 
         # ---- Masked Soft Dice (fg only) ----
         p = prob[valid]
@@ -86,9 +95,9 @@ class MaskedDiceBCETwitterignore2(nn.Module):
                 tear_loss = tv_loss_3d(prob, valid=valid_f)
             else:
                 raise ValueError(f"Unknown tear='{self.tear}'")
-
+        
         total = base + self.lambda_tear * tear_loss
-
+        
         logs = {
             "loss/base": float(base.detach().item()),
             "loss/dice": float(dice.detach().item()),
