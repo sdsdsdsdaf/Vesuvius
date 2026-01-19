@@ -1,3 +1,4 @@
+import gc
 import os
 import re
 import glob
@@ -5,6 +6,9 @@ import h5py
 import pandas as pd
 import tifffile as tiff
 from tqdm.auto import tqdm
+import random
+import numpy as np
+import torch
 
 
 def _extract_numeric_id_from_filename(path: str) -> str:
@@ -114,3 +118,31 @@ def build_h5_group_from_train_images(
         f"Deprecated excluded automatically because we only used train_images_dir."
     )
 
+
+
+def seed_everything(seed: int = 42):
+    # Python
+    random.seed(seed)
+    os.environ["PYTHONHASHSEED"] = str(seed)
+
+    # Numpy
+    np.random.seed(seed)
+
+    # PyTorch
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+
+    # CuDNN (deterministic)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+
+    # PyTorch 2.x deterministic
+    torch.use_deterministic_algorithms(True, warn_only=True)
+
+    print(f"[Seed Fixed] seed={seed}")
+
+def cleanup_memory():
+    gc.collect()
+    torch.cuda.empty_cache()
+    torch.cuda.ipc_collect()

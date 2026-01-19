@@ -12,6 +12,8 @@ from torch.utils.data import DataLoader
 import torch.optim as optim
 from tqdm.auto import tqdm
 
+from Utils.utils import cleanup_memory
+
 
 
 try:
@@ -109,7 +111,6 @@ def train(
     scaler: torch.GradScaler = None,
     use_wnb: bool = False,
 ):
-    
 
     for epoch in range(num_epochs):
         train_loss = train_one_epoch(
@@ -125,6 +126,10 @@ def train(
             wandb.log(log)
         
         print(f"Epoch {epoch+1}/{num_epochs}, Train Loss: {train_loss}")
+        
+        # Clean up memory after each epoch
+        cleanup_memory()
+        torch.cuda.synchronize()
         
 if __name__ == "__main__":
     import kagglehub
@@ -158,7 +163,8 @@ if __name__ == "__main__":
         strides=(2, 2, 2, 2),
         num_res_units=2,
     ).to(torch.device("cuda" if torch.cuda.is_available() else "cpu"))
-
+    model:torch.Module = torch.compile(model)
+    
     optimizer = optim.AdamW(model.parameters(), lr=1e-4)
     loss_fn = MaskedDiceBCETwitterignore2(tear="tv")
 
@@ -227,7 +233,8 @@ if __name__ == "__main__":
     weight_dir = "weights"
     weight_path = os.path.join(weight_dir, "unet_vesuvius.pth")
     os.makedirs(weight_dir, exist_ok=True)
-    torch.save(model.state_dict(), weight_path)
+    to_save = model._orig_mod.state_dict()
+    torch.save(to_save, weight_path)
     print(f"Model saved to {weight_path}")
     
     wandb.finish()

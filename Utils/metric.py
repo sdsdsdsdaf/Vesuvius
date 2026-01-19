@@ -1,10 +1,23 @@
+from dataclasses import dataclass
+from typing import Any, Dict, Optional, TypedDict
 import torch
-from topometrics import compute_leaderboard_score
+from topometrics import TopoReport, VOIReport, compute_leaderboard_score, LeaderboardReport
 import cc3d
 
 import numpy as np
 import torch
 import cc3d
+
+    
+class MetricsResult(TypedDict):
+    dice_fg1: float
+    precision_fg1: float
+    recall_fg1: float
+    f1_fg1: float
+    leaderboard_score: Optional[LeaderboardReport]
+    split_stats: Optional[dict]
+    merge_stats: Optional[dict]
+    split_merge_proxy: Optional[float]    
 
 @torch.no_grad()
 def fast_split_merge_proxy(
@@ -206,17 +219,74 @@ def fast_prf_fg1_torch(pred, gt, threshold=0.5, eps=1e-6):
     }
 
 
-def metric(pred:torch.Tensor, gt:torch.Tensor, mode="default", threshold=0.5):
+def metric(pred:torch.Tensor, gt:torch.Tensor, mode="default", threshold=0.5, **kwargs) -> MetricsResult:
     """
     pred: torch.Tensor, shape (D,H,W), float(prob) or bool
     gt:   torch.Tensor, same shape, int with {0:bg, 1:fg, 2:ignore}
+    
+    Args:
+        pred (torch.Tensor): Prediction tensor (D, H, W)
+        gt (torch.Tensor): Ground truth tensor (D, H, W)
+        mode (str): `"default"`, `"tear"`, `"full"`
+        threshold (float): Threshold for binarization
+        
+    Returns:
+        dict
+        {
+            "dice_fg1": float,
+                Dice score for foreground class (label = 1).
+
+            "precision_fg1": float,
+                Precision for foreground class.
+
+            "recall_fg1": float,
+                Recall for foreground class.
+
+            "f1_fg1": float,
+                F1 score for foreground class.
+
+            "leaderboard_score": float or None,
+                Final leaderboard score (weighted combination of
+                Surface Dice, Topology score, and VOI).
+                None if leaderboard evaluation is disabled.
+
+            "split_stats": dict or None,
+                Detailed statistics about split errors
+                (one GT component predicted as multiple components).
+
+            "merge_stats": dict or None,
+                Detailed statistics about merge errors
+                (multiple GT components predicted as one component).
+
+            "split_merge_proxy": float or None,
+                Proxy metric summarizing split/merge behavior.
+                Lower is generally better.
+        }
+    
+    
+    Examples
+    --------
+    ```python
+    from Utils.metric import metric
+    import torch 
+    
+    score = metric(pr, gt, mode="full", threshold=0.5)
+    rep = score["leaderboard_score"]
+
+    print("Leaderboard score:", rep.score)                # scalar in [0,1]
+    print("Topo score:", rep.topo.toposcore)              # [0,1]
+    print("Surface Dice:", rep.surface_dice)              # [0,1]
+    print("VOI score:", rep.voi.voi_score)                # (0,1]
+    print("VOI split/merge:", rep.voi.voi_split, rep.voi.voi_merge)
+    print("Params used:", rep.params)
+    ```
     """
         
     dice = fast_dice_fg1_torch(pred, gt, threshold=threshold)
 
     prf = fast_prf_fg1_torch(pred, gt, threshold=threshold)
     
-    if mode == "tear":
+    if mode in ["tear", "full"]:
         split_stats, merge_stats, proxy = fast_split_merge_proxy(
             pred, gt,
             threshold=threshold,
@@ -230,6 +300,7 @@ def metric(pred:torch.Tensor, gt:torch.Tensor, mode="default", threshold=0.5):
         pred = (pred >= threshold).cpu().numpy().astype(np.uint8)
         gt = gt.cpu().numpy().astype(np.uint8)
         
+        # TODO Kwargs로 옵션들 받기
         rep = compute_leaderboard_score(
         predictions=pred,
         labels=gt,
@@ -261,6 +332,7 @@ if __name__ == "__main__":
     gt = torch.randint(0,3,(320,320,320))
     
     import time
+    from pprint import pprint
     
     t0 = time.perf_counter()
     res = metric(pr, gt, mode="default", threshold=0.5)
@@ -271,5 +343,5 @@ if __name__ == "__main__":
     t0 = time.perf_counter()
     res = metric(pr, gt, mode="tear", threshold=0.5)
     t1 = time.perf_counter()
-    print("Metrics:", res)
+    pprint("Metrics:", res)
     print(f"[TIME] Metric computation took Mode: tear {t1 - t0:.2f} sec")
