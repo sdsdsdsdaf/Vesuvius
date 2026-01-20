@@ -11,12 +11,65 @@ import random
 import numpy as np
 import torch
 
+from typing import Union
+import torch
+import torch.nn as nn
+from pathlib import Path
+
+
+def load_model_weights(
+    model: nn.Module,
+    ckpt_path: Union[str, Path],
+    device: torch.device | str = "cpu",
+    strict: bool = True,
+) -> dict:
+    """
+    Load model weights safely from a checkpoint file.
+
+    Handles:
+    - checkpoint being either a raw state_dict or a dict with "state_dict"
+    - torch.compile saved models with "_orig_mod." prefix
+    - device mapping via map_location
+
+    Args:
+        model: target nn.Module to load weights into
+        ckpt_path: path to .pth/.pt checkpoint
+        device: torch device or string for map_location
+        strict: whether to enforce that the keys in state_dict match exactly
+
+    Returns:
+        info dict with loading details:
+            {
+                "missing_keys": [...],
+                "unexpected_keys": [...],
+                "num_loaded": int
+            }
+    """
+    ckpt = torch.load(ckpt_path, map_location=device)
+
+    # Extract state_dict
+    sd = ckpt.get("state_dict", ckpt) if isinstance(ckpt, dict) else ckpt
+
+    # Remove torch.compile prefix if present
+    if any(k.startswith("_orig_mod.") for k in sd.keys()):
+        sd = {k.replace("_orig_mod.", "", 1): v for k, v in sd.items()}
+
+    # Load
+    load_info = model.load_state_dict(sd, strict=strict)
+
+    info = {
+        "missing_keys": list(load_info.missing_keys),
+        "unexpected_keys": list(load_info.unexpected_keys),
+        "num_loaded": len(sd),
+    }
+    return info
+
 def to5dim(tensor:torch.Tensor):
     
     """
-    3D Tensor (D, H, W) -> (1, 1, D, W, h)
+    3D Tensor (D, H, W) -> (1, 1, D, H, W)
     
-    4D Tensor (B, D, H, W) -> (B, 1, D, W, H)
+    4D Tensor (B, D, H, W) -> (B, 1, D, H, W)
     """
     
     out = tensor
