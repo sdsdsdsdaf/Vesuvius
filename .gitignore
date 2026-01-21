@@ -1,6 +1,9 @@
 # Python cache
 __pycache__/
 **/__pycache__/
+.vscode/
+**/.vscode/
+Cache/
 
 # Large / generated data files
 *.gif

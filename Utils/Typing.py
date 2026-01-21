@@ -7,28 +7,20 @@ from topometrics import LeaderboardReport
 import torch
 from monai.networks.nets import UNet
 
-from dataclasses import dataclass, field
-from typing import Tuple, List, Dict, Optional
-
-
-from dataclasses import dataclass, field
-from typing import Tuple, List, Dict, Optional
-
-
-from dataclasses import dataclass, field
-from typing import Tuple, List, Dict, Optional
 
 @dataclass
 class ModelConfig:
     model_cls = UNet
-    model_params:Dict[str, Any] = {
-        "spatial_dims": 3,
-        "in_channels": 1,
-        "out_channels": 1,
-        "channels": (16, 32, 64, 128, 256),
-        "strides": (2, 2, 2, 2),
-        "num_res_units": 2,
-    }
+    model_params: Dict[str, Any] = field(
+        default_factory=lambda: {
+            "spatial_dims": 3,
+            "in_channels": 1,
+            "out_channels": 1,
+            "channels": (16, 32, 64, 128, 256),
+            "strides": (2, 2, 2, 2),
+            "num_res_units": 2,
+        }
+    )
 
 @dataclass
 class FoldHP:
@@ -139,25 +131,23 @@ class FoldHP:
 
     h5_path = "vesuvius_train_zyx_zyx.h5"
     """Path to the HDF5 dataset containing all training patches."""
-
-    epochs:int = 20
     
-    jitter:int = 0
+    jitter:int = (0,0,0)
     
 @dataclass
 class InferConfig:
-    sw_batch_size: int = 1,
-    overlap: float = 0.25,
-    overlap_mode: str = "gaussian",
-    use_tta: bool = True,
-    use_rotate_90: bool = True,
+    sw_batch_size: int = 1
+    overlap: float = 0.25
+    overlap_mode: str = "gaussian"
+    use_tta: bool = True
+    use_rotate_90: bool = True
 
 @dataclass
 class PostProcessConfig:
     threshold: float = 0.5
-    kwargs:Dict[str, Any] = {
-        "keep_lcc": True
-    }
+    kwargs: Dict[str, Any] = field(
+        default_factory=lambda: {"keep_lcc": True}
+    )
     
 
 @dataclass
@@ -200,12 +190,12 @@ class CVConfig:
     >>> run_cross_validation(cfg)
     """
 
-    fold_groups: List[set] = [
+    fold_groups: List[set] = field(default_factory=lambda: [
         {34117},                    # Group 1 (382)
         {35360},                    # Group 2 (176)
         {26010},                    # Group 3 (130)
         {26002, 44430, 53997},      # Group 4 (118)
-    ]
+    ])
 
     """List of sets of scroll_ids, one set per validation fold."""
 
@@ -234,7 +224,7 @@ class CVConfig:
     use_amp: bool = True
     """Enable Automatic Mixed Precision (GradScaler)."""
     
-    roi_size: Tuple[int,int,int] = (160,160,160),
+    roi_size: Tuple[int,int,int] = (160,160,160)
     
     model_cfg: ModelConfig = field(default_factory=ModelConfig)
     inference_cfg: InferConfig = field(default_factory=InferConfig)

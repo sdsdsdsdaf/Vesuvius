@@ -100,18 +100,22 @@ class VesuviusH5PatchDataset3D(Dataset):
         
         self.skip_all_ignore = bool(skip_all_ignore)
         self.ignore_value = int(ignore_value)
+        
+        # Train Spilt
+        self.allowed_sample_ids = set(map(int, allowed_sample_ids)) if allowed_sample_ids is not None else None
+        self.allowed_scroll_ids = set(map(int, allowed_scroll_ids)) if allowed_scroll_ids is not None else None
+        
+        self.cache_dir = cache_dir
+        self.fold_idx = fold_idx
             
         # read group ids and shapes, build patch index
         self.sample_ids, self.sample_shapes = self._scan_samples()
         self.patch_index = self._build_patch_index()
         
         self.meta_return = meta_return
-        self.cache_dir = cache_dir
-        self.fold_idx = fold_idx
         
-        # Train Spilt
-        self.allowed_sample_ids = set(map(int, allowed_sample_ids)) if allowed_sample_ids is not None else None
-        self.allowed_scroll_ids = set(map(int, allowed_scroll_ids)) if allowed_scroll_ids is not None else None
+        
+        
 
         if self.mode == "preload":
             self._preload_all()
@@ -161,7 +165,7 @@ class VesuviusH5PatchDataset3D(Dataset):
         ensure_dir(self.cache_dir)
         cache_path = os.path.join(self.cache_dir, file_name)
         if os.path.exists(os.path.join(cache_path)):
-            with open(file_name, 'rb') as f:
+            with open(cache_path, 'rb') as f:
                 out = pkl.load(f)
             return out
         

@@ -329,7 +329,6 @@ class Metric(torch.nn.Module):
         
     def forward(self, pred:torch.Tensor, gt:torch.Tensor):
         return metric(pred, gt, mode=self.mode, th=self.th)
-        
     
 if __name__ == "__main__":
     pr = torch.rand((320,320,320))

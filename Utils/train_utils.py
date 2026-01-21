@@ -3,7 +3,7 @@ from collections.abc import Callable
 import json
 import os
 from pathlib import Path
-from typing import Tuple
+from typing import Tuple, Optional
 import cc3d
 import wandb
 import pandas as pd
@@ -180,7 +180,7 @@ def train_one_epoch(
     model.train()
     total_loss = defaultdict(float)
     
-    for idx, batch in enumerate(tqdm(dataloader, leave=False)):
+    for idx, batch in enumerate(tqdm(dataloader, leave=False, desc="Training ")):
         batch: tuple[torch.Tensor, torch.Tensor, dict[str, int]] = batch
         
         inputs, targets, meta = batch
@@ -311,7 +311,7 @@ def train(
                 log[f"train_epoch/{k}"] = v
             wandb.log(log)
         
-        print(f"Epoch {epoch+1}/{num_epochs}, Train Loss: {train_loss['total']:.4f}")
+        print(f"Epoch {epoch+1}/{num_epochs}, Train Loss: {train_loss['loss_total']:.4f}")
         
         
         #Val 자리
@@ -379,17 +379,19 @@ def train_one_fold(
         meta_return=True,
         transform=get_train_transform(),
         # TODO: filter by train_df sample ids if your dataset supports it
-        sample_ids=train_df["sample_id"].tolist(),
-        jitter=cv_config.hp.jitter
+        allowed_sample_ids=train_df["id"].tolist(),
+        jitter=cv_config.hp.jitter,
+        fold_idx=fold_idx + 1
     )
 
     stem = Path(cfg.h5_path).stem
-    suffix = f"_FOLD{fold_idx}" if fold_idx is not None and fold_idx >= 0 else ""
+    suffix = f"_FOLD{fold_idx + 1}" if fold_idx is not None and fold_idx >= 0 else ""
     file_name = f"{stem}_sampler{suffix}.pkl"
     ensure_dir("Cache")
     cache_path = os.path.join("Cache", file_name)
     
     sampler = get_batch_sampler(
+        dataset=train_dataset,
         file_path=os.path.join(cache_path),
         batch_size=cfg.batch_size,
         pos_fraction=cfg.pos_fraction,
@@ -402,6 +404,9 @@ def train_one_fold(
         # TODO: pass allowed sample ids / indices if your sampler supports it
         # allowed_sample_ids=train_df["sample_id"].tolist(),
     )
+    
+    print(f"Val Scroll id: {cv_config.fold_groups[fold_idx]}")
+    print(f"Training Patch Num: {len(train_dataset)}")
 
     train_loader = DataLoader(
         train_dataset,
@@ -488,20 +493,20 @@ def predict_proba_fn_tiff_swi_from_valdf(
 
     # 🔥 핵심: patch rows -> unique volume list
     vols = (
-        val_df[["sample_id", "scroll_id"]]
+        val_df[["id", "scroll_id"]]
         .drop_duplicates()
-        .sort_values(["scroll_id", "sample_id"])
+        .sort_values(["scroll_id", "id"])
         .to_records(index=False)
     )
 
     outs: List[Dict[str, Any]] = []
 
-    for sample_id, scroll_id in tqdm(vols, desc="Predicting..."):
+    for sample_id, scroll_id in tqdm(vols, desc="Predicting...", leave=False):
         sample_id = int(sample_id)
         scroll_id = int(scroll_id)
 
-        img_path = os.path.join(train_images_dir, f"{sample_id}.tiff")
-        lbl_path = os.path.join(train_labels_dir, f"{sample_id}.tiff")
+        img_path = os.path.join(train_images_dir, f"{sample_id}.tif")
+        lbl_path = os.path.join(train_labels_dir, f"{sample_id}.tif")
 
         x_np = tiff.imread(img_path)  # (Z,H,W)
         y_np = tiff.imread(lbl_path)  # (Z,H,W)
@@ -653,7 +658,7 @@ def evaluate(
         sum_losses = defaultdict(float)
         n_items = 0
 
-        for it in proba_out:
+        for it in tqdm(proba_out, desc="Scoring...", leave=False):
             s, m, ld = eval_one(it)
             per_item_scores.append(s)
             per_item_metrics.append(m)
