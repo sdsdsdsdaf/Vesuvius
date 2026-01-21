@@ -11,7 +11,7 @@ from tqdm.auto import tqdm
 import pickle as pkl
 
 try:
-    from Utils.utils import build_h5_group_from_train_images
+    from Utils.utils import build_h5_group_from_train_images, ensure_dir
 except:
     from utils import build_h5_group_from_train_images
 
@@ -65,6 +65,10 @@ class VesuviusH5PatchDataset3D(Dataset):
         label_dtype: torch.dtype = torch.long,
         skip_all_ignore: bool = True,
         ignore_value: int = 2,
+        cache_dir="Cache",
+        fold_idx=-1,
+        allowed_sample_ids: Optional[list[int]] = None,
+        allowed_scroll_ids: Optional[list[int]] = None,
     ):
         
         assert mode in ("lazy", "preload")
@@ -102,6 +106,12 @@ class VesuviusH5PatchDataset3D(Dataset):
         self.patch_index = self._build_patch_index()
         
         self.meta_return = meta_return
+        self.cache_dir = cache_dir
+        self.fold_idx = fold_idx
+        
+        # Train Spilt
+        self.allowed_sample_ids = set(map(int, allowed_sample_ids)) if allowed_sample_ids is not None else None
+        self.allowed_scroll_ids = set(map(int, allowed_scroll_ids)) if allowed_scroll_ids is not None else None
 
         if self.mode == "preload":
             self._preload_all()
@@ -119,25 +129,40 @@ class VesuviusH5PatchDataset3D(Dataset):
         h5 = self._get_h5()
         root = h5[self.group_root]
         sample_ids = sorted(root.keys())
+        kept_ids: List[str] = []
         sample_shapes = {}
-        for sid in tqdm(sample_ids, desc="Sacnning samples", leave=False):
-            g = root[sid]
-            img_ds = g[self.image_name]
-            sample_shapes[sid] = tuple(map(int, img_ds.shape))  # (Z,H,W)
-
         
-        return sample_ids, sample_shapes
+        for sid in tqdm(sample_ids, desc="Scanning samples", leave=False):
+            g = root[sid]
+
+            # --- filter by attrs (cheap) ---
+            if self.allowed_sample_ids is not None:
+                if int(g.attrs["id"]) not in self.allowed_sample_ids:
+                    continue
+
+            if self.allowed_scroll_ids is not None:
+                if int(g.attrs["scroll_id"]) not in self.allowed_scroll_ids:
+                    continue
+
+            img_ds = g[self.image_name]
+            sample_shapes[sid] = tuple(map(int, img_ds.shape))
+            kept_ids.append(sid)
+
+        return kept_ids, sample_shapes
     
     def _build_patch_index(self):
         out: List[Tuple[str, int, int, int]] = []
         
-        file_path = Path(self.h5_path).stem
-        file_name = str(file_path) + "_patch_index.pkl"
-
-        if os.path.exists(file_name):
+        
+        stem = Path(self.h5_path).stem
+        suffix = f"_FOLD{self.fold_idx}" if self.fold_idx >= 0 else ""
+        file_name = f"{stem}_patch_index{suffix}.pkl"
+        
+        ensure_dir(self.cache_dir)
+        cache_path = os.path.join(self.cache_dir, file_name)
+        if os.path.exists(os.path.join(cache_path)):
             with open(file_name, 'rb') as f:
                 out = pkl.load(f)
-                
             return out
         
         # Open once for indexing
@@ -169,7 +194,7 @@ class VesuviusH5PatchDataset3D(Dataset):
 
                             out.append((sid, z0, y0, x0))
 
-        with open(file_name, 'wb') as f:
+        with open(cache_path, 'wb') as f:
             pkl.dump(out, f)
         
         return out
@@ -210,8 +235,8 @@ class VesuviusH5PatchDataset3D(Dataset):
         if self.mode == "preload":
             x = self._x_cache[sid][z1:z1+self.dz, y1:y1+self.dy, x1:x1+self.dx]
             y = self._y_cache[sid][z1:z1+self.dz, y1:y1+self.dy, x1:x1+self.dx]
-            self._scroll_cache[sid]
-            self._id_cache[sid]
+            scroll_id = int(self._scroll_cache[sid])
+            sample_id = int(self._id_cache[sid])
         else:
             f = self._get_h5()
             g = f[self.group_root][sid]

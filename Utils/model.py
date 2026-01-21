@@ -37,7 +37,7 @@ class TTAPredictor(nn.Module):
         Args:
             inputs (torch.Tensor): (B, C, D, H, W) e.g. (B, 1, D, H, W)
         Returns:
-            torch.Tensor: Averaged output tensor of shape (B, C_out, D, H, W)
+            torch.Tensor: Averaged output (Logit) tensor of shape (B, C_out, D, H, W)
         """
         self.model.eval()
 
@@ -63,7 +63,7 @@ class TTAPredictor(nn.Module):
                 y = self._flip_hw(y, fh, fw)
                 y = self._rot90_hw(y, (4 - rk) % 4)
 
-                acc = y if acc is None else (acc + y)
+                acc = y.float() if acc is None else (acc + y.float())
                 n += 1
 
         return acc / float(n)

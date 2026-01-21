@@ -322,6 +322,15 @@ def metric(pred:torch.Tensor, gt:torch.Tensor, mode="default", threshold=0.5, **
         "split_merge_proxy": proxy if mode == "tear" else None,
     }
     
+class Metric(torch.nn.Module):
+    def __init__(self, th=0.5, mode="default"):
+        self.th = th
+        self.mode = mode
+        
+    def forward(self, pred:torch.Tensor, gt:torch.Tensor):
+        return metric(pred, gt, mode=self.mode, th=self.th)
+        
+    
 if __name__ == "__main__":
     pr = torch.rand((320,320,320))
     gt = torch.randint(0,3,(320,320,320))
@@ -340,3 +349,4 @@ if __name__ == "__main__":
     t1 = time.perf_counter()
     pprint("Metrics:", res)
     print(f"[TIME] Metric computation took Mode: tear {t1 - t0:.2f} sec")
+    

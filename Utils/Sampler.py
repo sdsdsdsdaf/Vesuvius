@@ -13,7 +13,7 @@ except:
     from Dataset import VesuviusH5PatchDataset3D
 
 @torch.no_grad()
-def build_index_cache(file_path, ds, pos_thr=1, max_items=None):
+def build_index_cache(file_path, ds, pos_thr=1, max_items=None, use_cache=True):
     """
     Build per-index cache for:
       - scroll_ids[idx]
@@ -23,7 +23,7 @@ def build_index_cache(file_path, ds, pos_thr=1, max_items=None):
     scroll_ids = [None] * len(ds)
     is_pos = np.zeros(len(ds), dtype=np.bool_)
     
-    if os.path.exists(file_path):
+    if use_cache and os.path.exists(file_path):
         with open(file_path, 'rb') as f:
             scroll_ids, is_pos = pkl.load(f)
         
@@ -57,7 +57,7 @@ def build_index_cache(file_path, ds, pos_thr=1, max_items=None):
     return scroll_ids, is_pos
 
 def get_batch_sampler(file_path:str, batch_size: int, pos_fraction: float = 0.5, pos_thr: int = 1,
-                      shuffle: bool = True, drop_last: bool = True, max_items=None, seed: int = 42, **kwargs):
+                      shuffle: bool = True, drop_last: bool = True, max_items=None, seed: int = 42, use_cache:bool=True, **kwargs):
     """
     Create a MultiScrollBalancedBatchSampler for the given dataset.
     
@@ -80,7 +80,7 @@ def get_batch_sampler(file_path:str, batch_size: int, pos_fraction: float = 0.5,
     """
     dataset = VesuviusH5PatchDataset3D(**kwargs)
     dataset.meta_return = True  # ensure meta is returned
-    scroll_ids, is_pos = build_index_cache(file_path, dataset, max_items=max_items, pos_thr=pos_thr)
+    scroll_ids, is_pos = build_index_cache(file_path, dataset, max_items=max_items, pos_thr=pos_thr, use_cache=use_cache)
     
     sampler = MultiScrollBalancedBatchSampler(
         dataset=dataset,

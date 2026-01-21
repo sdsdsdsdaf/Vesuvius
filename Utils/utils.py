@@ -1,8 +1,10 @@
+import copy
 import gc
+import json
 import os
 import re
 import glob
-from typing import Any
+from typing import Any, Dict
 import h5py
 import pandas as pd
 import tifffile as tiff
@@ -15,7 +17,31 @@ from typing import Union
 import torch
 import torch.nn as nn
 from pathlib import Path
+from torchsummary import summary
+from dataclasses import asdict, is_dataclass
 
+try:
+    from Utils.Typing import CVConfig, FoldHP, ModelConfig
+except ImportError:
+    from Typing import CVConfig, FoldHP, ModelConfig
+
+def build_model(cfg: ModelConfig, verbose=False):
+    
+    model = cfg.model_cls(**cfg.model_params)
+    if verbose:
+        try:
+            summary(model.cuda() if torch.cuda.is_available() else model, (1,1,160,160,160))
+        except:
+            print(model)    
+    return model
+
+def save_model(model:nn.Module, workdir:str, weight_file_name:str = "last.pth"):
+    ckpt_path = os.path.join(workdir, weight_file_name)
+    try:
+        to_save = model._orig_mod.state_dict()
+    except Exception:
+        to_save = model.state_dict()
+    torch.save(to_save, ckpt_path)
 
 def load_model_weights(
     model: nn.Module,
@@ -192,6 +218,17 @@ def build_h5_group_from_train_images(
         f"Deprecated excluded automatically because we only used train_images_dir."
     )
 
+# -------------------------
+# Utilities
+# -------------------------
+def ensure_dir(path: str) -> None:
+    os.makedirs(path, exist_ok=True)
+
+
+def save_json(path: str, obj: Dict[str, Any]) -> None:
+    ensure_dir(os.path.dirname(path))
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(obj, f, indent=2, ensure_ascii=False)
 
 
 def seed_everything(seed: int = 42):
@@ -276,3 +313,116 @@ def detect_nan_inf(
                 break
 
     return has_issue
+
+
+from typing import Dict, Any, Callable, Optional
+
+def get_fold_hp(cfg: CVConfig, fold_idx: int) -> FoldHP:
+    hp = copy.deepcopy(cfg.hp)
+
+    if cfg.fold_hp_overrides and fold_idx in cfg.fold_hp_overrides:
+        for k, v in cfg.fold_hp_overrides[fold_idx].items():
+            setattr(hp, k, v)
+
+    return hp
+
+def make_objective_fn(
+    objective: str = "f1_fg1",
+    weights: Optional[Dict[str, float]] = None,
+    use_proxy: bool = True,
+) -> Callable[[Dict[str, Any]], float]:
+    """
+    Create a scalar objective function from your `metric()` output dict.
+
+    Args:
+        objective:
+            One of:
+              - "dice_fg1"
+              - "precision_fg1"
+              - "recall_fg1"
+              - "f1_fg1"
+              - "split_merge_proxy"   (only available when mode="tear")
+              - "f1_minus_proxy"      (f1 - alpha * proxy; weights must contain alpha)
+              - "weighted_sum"        (sum_k w_k * metric_k; use `weights`)
+        weights:
+            Used when objective is "weighted_sum" or "f1_minus_proxy".
+            Examples:
+              - weighted_sum: {"f1_fg1": 1.0, "split_merge_proxy": -0.2}
+              - f1_minus_proxy: {"alpha": 0.2}
+        use_proxy:
+            If True, tries to use split_merge_proxy when present; otherwise falls back gracefully.
+
+    Returns:
+        objective_fn(metrics_dict) -> float
+    """
+    weights = weights or {}
+
+    def get(m: Dict[str, Any], key: str, default: float = 0.0) -> float:
+        v = m.get(key, None)
+        if v is None:
+            return default
+        return float(v)
+
+    if objective in {"dice_fg1", "precision_fg1", "recall_fg1", "f1_fg1"}:
+        return lambda m: get(m, objective)
+
+    if objective == "split_merge_proxy":
+        # Lower is better, so return negative for maximization.
+        return lambda m: -get(m, "split_merge_proxy", default=1e9)
+
+    if objective == "f1_minus_proxy":
+        alpha = float(weights.get("alpha", 0.2))
+        def fn(m: Dict[str, Any]) -> float:
+            f1 = get(m, "f1_fg1")
+            proxy = get(m, "split_merge_proxy", default=0.0) if use_proxy else 0.0
+            # proxy: lower is better -> subtract alpha * proxy
+            return f1 - alpha * proxy
+        return fn
+
+    if objective == "weighted_sum":
+        # You can mix metrics; use negative weights for "lower is better" terms.
+        # Example: {"f1_fg1": 1.0, "split_merge_proxy": -0.2}
+        def fn(m: Dict[str, Any]) -> float:
+            s = 0.0
+            for k, w in weights.items():
+                if k == "leaderboard_score":
+                    # Not supported here (too slow); ignore if passed accidentally.
+                    continue
+                s += float(w) * get(m, k, default=0.0)
+            return s
+        return fn
+
+    raise ValueError(f"Unknown objective='{objective}'.")
+
+def dc_to_dict(dc):
+    """Recursively convert dataclass to JSON-serializable dict."""
+    if is_dataclass(dc):
+        out = {}
+        for k, v in asdict(dc).items():
+            out[k] = dc_to_dict(v)
+        return out
+    elif isinstance(dc, dict):
+        return {k: dc_to_dict(v) for k, v in dc.items()}
+    elif isinstance(dc, tuple):
+        return list(dc)   # wandb-safe
+    elif hasattr(dc, "__name__"):  # class (e.g. optimizer)
+        return dc.__name__
+    else:
+        return dc
+    
+def get_wandb_config(cfg:CVConfig, fold:int=99):
+    wandb_cfg = {
+        "fold": fold,
+        "model": dc_to_dict(cfg.model_cfg),
+        "train": dc_to_dict(cfg.hp),
+        "inference": dc_to_dict(cfg.inference_cfg),
+        "postprocess": dc_to_dict(cfg.postprocess_cfg),
+        "cv": {
+            "fold_groups": [list(g) for g in cfg.fold_groups],
+            "use_weighted_average": cfg.use_weighted_average,
+            "use_amp": cfg.use_amp,
+            "roi_size": list(cfg.roi_size),
+        },
+    }
+    
+    return wandb_cfg
