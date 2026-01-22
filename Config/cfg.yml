@@ -61,7 +61,7 @@ model_cfg:
     - 2
     num_res_units: 2
 inference_cfg:
-  sw_batch_size: 1
+  sw_batch_size: 4
   overlap: 0.25
   overlap_mode: gaussian
   use_tta: false

@@ -322,6 +322,7 @@ def train(
             )
             fold_score = score['fold_score']
             
+            print(f"Epoch {epoch + 1}/{num_epochs}: Score: {fold_score:.6f}")
             if best_score <= fold_score:
                 print(f"🔥 Best updated: {best_score:.6f} → {fold_score:.6f} Model Saved -> {os.path.join(save_dir, 'best1.pth')}")
                 save_model(model, workdir=save_dir, weight_file_name="best1.pth")

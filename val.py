@@ -24,6 +24,7 @@ if __name__ == "__main__":
     
     cfg.inference_cfg.use_rotate_90 = False
     cfg.inference_cfg.use_tta = False
+    cfg.inference_cfg.sw_batch_size = 4
     
     ensure_dir("Config")
     save_config_to_yaml(cfg, os.path.join("Config", "cfg.yml"))
