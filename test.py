@@ -1,14 +1,21 @@
 from monai.networks.nets import UNet
 import torch
 from torchsummary import summary
+import time
+def iter_gen():
+    for i in range(10):
+        print(i)
+        yield i
 
-model = UNet(
-    spatial_dims=3,
-    in_channels=1,
-    out_channels=1,
-    channels=(16, 32, 64, 128, 256),
-    strides=(2, 2, 2, 2),
-    num_res_units=2,
-).cuda()
+def list_gen():
+    li = []
+    for i in range(10):
+        print(i)
+        li.append(i)
+        
+    return li
 
-summary(model, (1,160,160,160))
+
+for result in list_gen():
+    print("Yiled: ", result)
+    time.sleep(1.0)

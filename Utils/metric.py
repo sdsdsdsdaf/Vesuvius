@@ -324,9 +324,11 @@ def metric(pred:torch.Tensor, gt:torch.Tensor, mode="default", threshold=0.5, **
     
 class Metric(torch.nn.Module):
     def __init__(self, th=0.5, mode="default"):
+        super().__init__()
         self.th = th
         self.mode = mode
-        
+    
+    @torch.no_grad()
     def forward(self, pred:torch.Tensor, gt:torch.Tensor):
         return metric(pred, gt, mode=self.mode, th=self.th)
     

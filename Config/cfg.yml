@@ -1,0 +1,72 @@
+fold_groups:
+- - 34117
+- - 35360
+- - 26010
+- - 26002
+  - 53997
+  - 44430
+out_dir: cv_runs
+use_weighted_average: true
+save_fold_summary: true
+hp:
+  batch_size: 6
+  pos_fraction: 0.5
+  pos_thr: 4096
+  drop_last: true
+  num_workers: 2
+  pin_memory: true
+  patch_size:
+  - 160
+  - 160
+  - 160
+  lr: 0.0003
+  weight_decay: 0.01
+  betas:
+  - 0.9
+  - 0.999
+  pos_weight: 5.0
+  use_tv: true
+  epochs: 30
+  grad_clip: 5.0
+  seed: 42
+  optimizer_class: torch.optim.adamw.AdamW
+  h5_path: vesuvius_train_zyx_zyx.h5
+  jitter:
+  - 0
+  - 0
+  - 0
+fold_hp_overrides: null
+use_amp: true
+use_compile: true
+roi_size:
+- 160
+- 160
+- 160
+model_cfg:
+  model_cls: monai.networks.nets.unet.UNet
+  model_params:
+    spatial_dims: 3
+    in_channels: 1
+    out_channels: 1
+    channels:
+    - 16
+    - 32
+    - 64
+    - 128
+    - 256
+    strides:
+    - 2
+    - 2
+    - 2
+    - 2
+    num_res_units: 2
+inference_cfg:
+  sw_batch_size: 1
+  overlap: 0.25
+  overlap_mode: gaussian
+  use_tta: false
+  use_rotate_90: false
+postprocess_cfg:
+  threshold: 0.5
+  kwargs:
+    keep_lcc: true

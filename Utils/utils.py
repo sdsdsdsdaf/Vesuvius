@@ -440,7 +440,7 @@ def serialize(obj):
         return serialize(asdict(obj))
     elif isinstance(obj, dict):
         return {k: serialize(v) for k, v in obj.items()}
-    elif isinstance(obj, (list, tuple)):
+    elif isinstance(obj, (list, tuple, set)):
         return [serialize(v) for v in obj]
     elif isinstance(obj, type):
         # class → "module.ClassName"

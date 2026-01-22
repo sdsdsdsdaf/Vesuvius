@@ -343,7 +343,8 @@ class MaskedDiceBCEIgnore2(nn.Module):
 
     def forward(self, logits: torch.Tensor, gt: torch.Tensor) -> LossLogOutput:
         self._step += 1
-
+        
+        device = logits.device
         logits = _ensure_b1dhw(logits)
         gt = _ensure_b1dhw(gt)
 
@@ -357,7 +358,7 @@ class MaskedDiceBCEIgnore2(nn.Module):
         # ---- Base: masked BCE (with pos_weight) ----
         # We do reduction='none' then mask+normalize by valid voxel count.
         bce_vox = F.binary_cross_entropy_with_logits(
-            logits, y, pos_weight=self.pos_weight, reduction="none"
+            logits, y, pos_weight=self.pos_weight.to(device), reduction="none"
         )
         denom = valid_mask.sum().clamp_min(8).to(bce_vox.dtype)
         bce = (bce_vox * valid_mask.to(bce_vox.dtype)).sum() / denom

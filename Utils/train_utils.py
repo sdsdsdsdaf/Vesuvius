@@ -3,7 +3,7 @@ from collections.abc import Callable
 import json
 import os
 from pathlib import Path
-from typing import Tuple, Optional
+from typing import Tuple, Optional, Any, Dict
 import cc3d
 import wandb
 import pandas as pd
@@ -42,7 +42,7 @@ except:
     from Loss import MaskedDiceBCEIgnore2
     from utils import cleanup_memory, seed_everything, to5dim, load_model_weights, get_fold_hp, build_model, get_wandb_config
     from transform import get_val_transform, get_train_transform
-    from Typing import CVConfig, CVResult
+    from Typing import *
     from model import TTAPredictor
     
     
@@ -481,7 +481,7 @@ def predict_proba_fn_tiff_swi_from_valdf(
     *,
     train_images_dir: str = "/home/user/.cache/kagglehub/competitions/vesuvius-challenge-surface-detection/train_images",
     train_labels_dir: str = "/home/user/.cache/kagglehub/competitions/vesuvius-challenge-surface-detection/train_labels",
-) -> List[Dict[str, Any]]:
+):
     
     infer_cfg = cfg.inference_cfg
     device = next(model.parameters()).device
@@ -501,7 +501,7 @@ def predict_proba_fn_tiff_swi_from_valdf(
 
     outs: List[Dict[str, Any]] = []
 
-    for sample_id, scroll_id in tqdm(vols, desc="Predicting...", leave=False):
+    for sample_id, scroll_id in vols:
         sample_id = int(sample_id)
         scroll_id = int(scroll_id)
 
@@ -528,6 +528,8 @@ def predict_proba_fn_tiff_swi_from_valdf(
                     predictor=predictor,
                     overlap=infer_cfg.overlap,
                     mode=infer_cfg.overlap_mode,
+                    sw_device=device,
+                    device=torch.device("cpu")
                 )
         else:
             logits = sliding_window_inference(
@@ -537,21 +539,29 @@ def predict_proba_fn_tiff_swi_from_valdf(
                 predictor=predictor,
                 overlap=infer_cfg.overlap,
                 mode=infer_cfg.overlap_mode,
+                sw_device=device,
+                device=torch.device("cpu")
             )
+            
+        del x
+        if device.type == "cuda":
+            torch.cuda.empty_cache()
 
         logits = torch.squeeze(logits).float()  # (Z,H,W)
 
-        outs.append({
-            "logits": logits,
-            "gt": torch.tensor(y_np, dtype=torch.uint8).squeeze(),  # {0,1,2}
+        yield {
+            "logits": logits.detach().cpu().squeeze(),         # ✅ CPU로 확정 + squeeze
+            "gt": torch.tensor(y_np, dtype=torch.uint8).squeeze(),
             "sample_id": sample_id,
             "scroll_id": scroll_id,
             "img_path": img_path,
             "lbl_path": lbl_path,
             "fold": fold_idx,
-        })
-
-    return outs
+        }
+        # ✅ 메모리 정리 (선택이지만 추천)
+        del logits, x_np, y_np
+        if device.type == "cuda":
+            torch.cuda.empty_cache()
 
 def _to_float(v: Any) -> Optional[float]:
     """Safely convert common numeric types to python float, else return None."""
@@ -648,70 +658,58 @@ def evaluate(
         return score, metrics, loss_dict
 
     # --- 3) Handle list vs dict outputs ---
-    if isinstance(proba_out, list):
-        per_item_scores: list[float] = []
-        per_item_metrics: list[Dict[str, Any]] = []
-        per_item_losses: list[Dict[str, Any]] = []
-
-        # For fold-level averaged float metrics / loss
-        sum_metrics = defaultdict(float)
-        sum_losses = defaultdict(float)
-        n_items = 0
-
-        for it in tqdm(proba_out, desc="Scoring...", leave=False):
-            s, m, ld = eval_one(it)
-            per_item_scores.append(s)
-            per_item_metrics.append(m)
-            per_item_losses.append(ld)
-
-            n_items += 1
-
-            # Aggregate float-like metric values
-            for k, v in m.items():
-                fv = _to_float(v)
-                if fv is not None:
-                    sum_metrics[k] += fv
-
-            # Aggregate float-like loss values
-            for k, v in (ld or {}).items():
-                fv = _to_float(v)
-                if fv is not None:
-                    sum_losses[k] += fv
-
-        fold_score = float(np.mean(per_item_scores)) if per_item_scores else float("nan")
-
-        avg_metrics = {}
-        if n_items > 0:
-            avg_metrics = {k: (v / n_items) for k, v in sum_metrics.items()}
-
-        avg_losses = {}
-        if n_items > 0 and loss_fn is not None:
-            avg_losses = {k: (v / n_items) for k, v in sum_losses.items()}
-
-        out: Dict[str, Any] = {
-            "fold_score": fold_score,
-            "metrics": avg_metrics,                 # fold-averaged float metrics
-            "items_scores": per_item_scores,        # per-item objective scores
-            "items": per_item_metrics,              # per-item metrics dicts
-        }
-        if loss_fn is not None:
-            out["loss"] = avg_losses
-
-        return out
-
-    elif isinstance(proba_out, dict):
-        fold_score, metrics_main, loss_main = eval_one(proba_out)
-
-        out: Dict[str, Any] = {
-            "fold_score": fold_score,
-            "main": metrics_main,   # keep original metrics dict (not averaged)
-        }
-        if loss_fn is not None:
-            out["loss"] = loss_main
-        return out
-
+    if isinstance(proba_out, Dict):
+        proba_iter = [proba_out]
     else:
-        raise TypeError(f"predict_proba_fn returned unsupported type: {type(proba_out)}")
+        proba_iter = proba_out 
+        
+    per_item_scores: list[float] = []
+    per_item_metrics: list[Dict[str, Any]] = []
+    per_item_losses: list[Dict[str, Any]] = []
+
+    # For fold-level averaged float metrics / loss
+    sum_metrics = defaultdict(float)
+    sum_losses = defaultdict(float)
+    n_items = 0
+
+    for it in tqdm(proba_iter, desc="Eval: ", leave=False, total=len(val_df)):
+        s, m, ld = eval_one(it)
+        per_item_scores.append(s)
+        per_item_metrics.append(m)
+        per_item_losses.append(ld)
+
+        n_items += 1
+
+        # Aggregate float-like metric values
+        for k, v in m.items():
+            fv = _to_float(v)
+            if fv is not None:
+                sum_metrics[k] += fv
+
+        # Aggregate float-like loss values
+        for k, v in (ld or {}).items():
+            fv = _to_float(v)
+            if fv is not None:
+                sum_losses[k] += fv
+
+    fold_score = float(np.mean(per_item_scores)) if per_item_scores else float("nan")
+
+    avg_metrics = {k: (v / n_items) for k, v in sum_metrics.items()} if n_items > 0 else {}
+
+    avg_losses = {}
+    if n_items > 0 and loss_fn is not None:
+        avg_losses = {k: (v / n_items) for k, v in sum_losses.items()}
+
+    out: Dict[str, Any] = {
+        "fold_score": fold_score,
+        "metrics": avg_metrics,
+        "items_scores": per_item_scores,
+        "items": per_item_metrics,
+    }
+    if loss_fn is not None:
+        out["loss"] = avg_losses
+
+    return out
 
 def run_scroll_group_cv(
     df:pd.DataFrame,

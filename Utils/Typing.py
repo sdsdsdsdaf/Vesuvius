@@ -10,7 +10,7 @@ from monai.networks.nets import UNet
 
 @dataclass
 class ModelConfig:
-    model_cls = UNet
+    model_cls:torch.nn.Module = UNet
     model_params: Dict[str, Any] = field(
         default_factory=lambda: {
             "spatial_dims": 3,
@@ -129,7 +129,7 @@ class FoldHP:
 
     optimizer_class:torch.nn.Module = torch.optim.AdamW
 
-    h5_path = "vesuvius_train_zyx_zyx.h5"
+    h5_path:str = "vesuvius_train_zyx_zyx.h5"
     """Path to the HDF5 dataset containing all training patches."""
     
     jitter:int = (0,0,0)
