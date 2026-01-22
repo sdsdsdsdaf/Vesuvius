@@ -224,6 +224,8 @@ class CVConfig:
     use_amp: bool = True
     """Enable Automatic Mixed Precision (GradScaler)."""
     
+    use_compile:bool = True
+    
     roi_size: Tuple[int,int,int] = (160,160,160)
     
     model_cfg: ModelConfig = field(default_factory=ModelConfig)

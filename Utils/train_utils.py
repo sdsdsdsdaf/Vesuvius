@@ -969,6 +969,7 @@ def run_scroll_group_cv(
         
         model = build_fn(cfg.model_cfg) 
         model = model.to(device)
+        if cfg.use_compile: model = torch.compile(model)
         
         # 2) Train fold
         train_info = train_fold_fn(
@@ -993,9 +994,13 @@ def run_scroll_group_cv(
         # Load Model
         model_path = os.path.join(workdir, "last.pth")
         if load_best and os.path.exists(os.path.join(workdir, "best1.pth")):
-            model_path = os.path.join(workdir, "best1.pth")        
+            model_path = os.path.join(workdir, "best1.pth")       
+            
+        model = build_fn(cfg.model_cfg)
+        model = model.to(device) 
         load_model_weights(model, model_path, device=device)
-
+        if cfg.use_compile: model = torch.compile(model)
+        
         eval_out = evaluate(
             model=model,
             val_df=val_df,

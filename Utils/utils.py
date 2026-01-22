@@ -1,5 +1,6 @@
 import copy
 import gc
+import importlib
 import json
 import os
 import re
@@ -19,11 +20,15 @@ import torch.nn as nn
 from pathlib import Path
 from torchsummary import summary
 from dataclasses import asdict, is_dataclass
+import yaml
+import torch
+import monai
+
 
 try:
-    from Utils.Typing import CVConfig, FoldHP, ModelConfig
+    from Utils.Typing import CVConfig, FoldHP, ModelConfig, InferConfig, PostProcessConfig
 except ImportError:
-    from Typing import CVConfig, FoldHP, ModelConfig
+    from Typing import CVConfig, FoldHP, ModelConfig, InferConfig, PostProcessConfig
 
 def build_model(cfg: ModelConfig, verbose=False):
     
@@ -426,3 +431,56 @@ def get_wandb_config(cfg:CVConfig, fold:int=99):
     }
     
     return wandb_cfg
+
+def serialize(obj):
+    """
+    Convert dataclass (or nested structure) into YAML-serializable dict.
+    """
+    if is_dataclass(obj):
+        return serialize(asdict(obj))
+    elif isinstance(obj, dict):
+        return {k: serialize(v) for k, v in obj.items()}
+    elif isinstance(obj, (list, tuple)):
+        return [serialize(v) for v in obj]
+    elif isinstance(obj, type):
+        # class → "module.ClassName"
+        return f"{obj.__module__}.{obj.__name__}"
+    else:
+        return obj
+    
+def save_config_to_yaml(cfg, path: str):
+    with open(path, "w") as f:
+        yaml.safe_dump(
+            serialize(cfg),
+            f,
+            sort_keys=False,
+            default_flow_style=False,
+        )
+        
+def resolve_class(path: str):
+    """
+    "torch.optim.AdamW" → torch.optim.AdamW
+    """
+    module_name, cls_name = path.rsplit(".", 1)
+    module = importlib.import_module(module_name)
+    return getattr(module, cls_name)
+
+def load_config_from_yaml(path: str) -> CVConfig:
+    with open(path, "r") as f:
+        raw = yaml.safe_load(f)
+
+    # resolve classes
+    raw["model_cfg"]["model_cls"] = resolve_class(
+        raw["model_cfg"]["model_cls"]
+    )
+    raw["hp"]["optimizer_class"] = resolve_class(
+        raw["hp"]["optimizer_class"]
+    )
+
+    # reconstruct dataclasses
+    raw["model_cfg"] = ModelConfig(**raw["model_cfg"])
+    raw["hp"] = FoldHP(**raw["hp"])
+    raw["inference_cfg"] = InferConfig(**raw["inference_cfg"])
+    raw["postprocess_cfg"] = PostProcessConfig(**raw["postprocess_cfg"])
+
+    return CVConfig(**raw)

@@ -21,6 +21,10 @@ if __name__ == "__main__":
     )
     
     cfg = CVConfig()
+    
+    cfg.inference_cfg.use_rotate_90 = False
+    cfg.inference_cfg.use_tta = False
+    
     df = pd.read_csv(os.path.join(data_path, "train.csv"))
     metric_fn = Metric(cfg.postprocess_cfg.threshold, mode="tear")
     objective_fn = make_objective_fn(objective="f1_minus_proxy", weights={"alpha": 0.2},)
