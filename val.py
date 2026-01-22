@@ -1,3 +1,6 @@
+import warnings
+warnings.filterwarnings("ignore")
+
 import os
 import kagglehub
 from Utils.Typing import *
@@ -13,18 +16,20 @@ if __name__ == "__main__":
     train_data_dir = os.path.join(data_path, "train_images")
     train_lable_dir = os.path.join(data_path, "train_labels")
         
+    cfg = CVConfig()
+    
+    cfg.hp.batch_size = 8
+    cfg.inference_cfg.use_rotate_90 = False
+    cfg.inference_cfg.use_tta = False
+    cfg.inference_cfg.sw_batch_size = 8
+        
     build_h5_group_from_train_images(
         train_images_dir=train_data_dir,
         train_labels_dir=train_lable_dir,
         train_csv_path=os.path.join(data_path, "train.csv"),
-        out_h5_path="vesuvius_train_zyx_zyx.h5",
+        out_h5_path=cfg.hp.h5_path,
     )
-    
-    cfg = CVConfig()
-    
-    cfg.inference_cfg.use_rotate_90 = False
-    cfg.inference_cfg.use_tta = False
-    cfg.inference_cfg.sw_batch_size = 4
+
     
     ensure_dir("Config")
     save_config_to_yaml(cfg, os.path.join("Config", "cfg.yml"))
@@ -32,4 +37,4 @@ if __name__ == "__main__":
     df = pd.read_csv(os.path.join(data_path, "flitered_train.csv"))
     metric_fn = Metric(cfg.postprocess_cfg.threshold, mode="tear")
     objective_fn = make_objective_fn(objective="f1_minus_proxy", weights={"alpha": 0.2},)
-    result = run_scroll_group_cv(df, cfg, metric_fn=metric_fn, objective_fn=objective_fn)
+    result = run_scroll_group_cv(df, cfg, metric_fn=metric_fn, objective_fn=objective_fn, use_wnb=True)

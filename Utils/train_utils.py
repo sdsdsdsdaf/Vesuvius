@@ -297,6 +297,8 @@ def train(
     
     best_score = float('-inf')
     for epoch in range(num_epochs):
+        train_loss = {}
+        
         train_loss = train_one_epoch(
             model, train_loader, optimizer, loss_fn, device, epoch, scaler, use_wnb, grad_clip
         )
@@ -500,7 +502,6 @@ def predict_proba_fn_tiff_swi_from_valdf(
         .to_records(index=False)
     )
 
-    outs: List[Dict[str, Any]] = []
 
     for sample_id, scroll_id in vols:
         sample_id = int(sample_id)
@@ -530,7 +531,7 @@ def predict_proba_fn_tiff_swi_from_valdf(
                     overlap=infer_cfg.overlap,
                     mode=infer_cfg.overlap_mode,
                     sw_device=device,
-                    device=torch.device("cpu")
+                    device=device
                 )
         else:
             logits = sliding_window_inference(
@@ -541,7 +542,7 @@ def predict_proba_fn_tiff_swi_from_valdf(
                 overlap=infer_cfg.overlap,
                 mode=infer_cfg.overlap_mode,
                 sw_device=device,
-                device=torch.device("cpu")
+                device=device
             )
             
         del x

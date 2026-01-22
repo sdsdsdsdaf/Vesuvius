@@ -5,6 +5,7 @@ import json
 import os
 import re
 import glob
+import subprocess
 from typing import Any, Dict
 import h5py
 import pandas as pd
@@ -484,3 +485,12 @@ def load_config_from_yaml(path: str) -> CVConfig:
     raw["postprocess_cfg"] = PostProcessConfig(**raw["postprocess_cfg"])
 
     return CVConfig(**raw)
+
+def get_git_commit():
+    try:
+        return subprocess.check_output(
+            ["git", "rev-parse", "--short", "HEAD"],
+            cwd=Path(__file__).parent,
+        ).decode().strip()
+    except Exception:
+        return "unknown"

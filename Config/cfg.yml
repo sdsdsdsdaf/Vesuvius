@@ -9,7 +9,7 @@ out_dir: cv_runs
 use_weighted_average: true
 save_fold_summary: true
 hp:
-  batch_size: 6
+  batch_size: 8
   pos_fraction: 0.5
   pos_thr: 4096
   drop_last: true
@@ -61,7 +61,7 @@ model_cfg:
     - 2
     num_res_units: 2
 inference_cfg:
-  sw_batch_size: 4
+  sw_batch_size: 8
   overlap: 0.25
   overlap_mode: gaussian
   use_tta: false
