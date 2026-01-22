@@ -25,7 +25,7 @@ if __name__ == "__main__":
     cfg.inference_cfg.use_rotate_90 = False
     cfg.inference_cfg.use_tta = False
     
-    df = pd.read_csv(os.path.join(data_path, "train.csv"))
+    df = pd.read_csv(os.path.join(data_path, "flitered_train.csv"))
     metric_fn = Metric(cfg.postprocess_cfg.threshold, mode="tear")
     objective_fn = make_objective_fn(objective="f1_minus_proxy", weights={"alpha": 0.2},)
     result = run_scroll_group_cv(df, cfg, metric_fn=metric_fn, objective_fn=objective_fn)
